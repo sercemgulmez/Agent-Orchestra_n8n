@@ -1,0 +1,117 @@
+{
+  "id": "api-only-pipeline-v2",
+  "name": "YemekTest API Only Pipeline",
+  "nodes": [
+    {
+      "id": "node-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {}
+    },
+    {
+      "id": "node-set-tasks",
+      "name": "Define API Tasks",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [320, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "tasks",
+              "name": "tasks",
+              "value": "[\"Test user login with valid credentials\", \"Test restaurant search API\", \"Test add to cart endpoint\", \"Test order creation flow\", \"Test order tracking status cycle\"]",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-split",
+      "name": "Split Tasks",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [540, 300],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "node-complexity",
+      "name": "Analyze Complexity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [760, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://orchestrator:8000/api/complexity/analyze?task={{ encodeURIComponent($json.task) }}"
+      }
+    },
+    {
+      "id": "node-orchestrate",
+      "name": "Orchestrate Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [980, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://orchestrator:8000/api/orchestrate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "task", "value": "={{ $('Split Tasks').item.json.task }}"},
+            {"name": "mode", "value": "CODEX_SONNET"},
+            {"name": "budget_usd", "value": "2.0"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-merge",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1200, 300],
+      "parameters": {
+        "mode": "append"
+      }
+    },
+    {
+      "id": "node-report",
+      "name": "Get Token Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1420, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "http://orchestrator:8000/api/token-report"
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {"main": [[{"node": "Define API Tasks", "type": "main", "index": 0}]]},
+    "Define API Tasks": {"main": [[{"node": "Split Tasks", "type": "main", "index": 0}]]},
+    "Split Tasks": {"main": [[{"node": "Analyze Complexity", "type": "main", "index": 0}]]},
+    "Analyze Complexity": {"main": [[{"node": "Orchestrate Task", "type": "main", "index": 0}]]},
+    "Orchestrate Task": {"main": [[{"node": "Merge Results", "type": "main", "index": 0}]]},
+    "Merge Results": {"main": [[{"node": "Get Token Report", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [{"name": "yemektest"}, {"name": "api-only"}],
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 0
+}

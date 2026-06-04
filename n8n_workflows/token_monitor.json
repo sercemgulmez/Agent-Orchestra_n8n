@@ -1,0 +1,102 @@
+{
+  "id": "token-monitor-v2",
+  "name": "YemekTest Token Budget Monitor",
+  "nodes": [
+    {
+      "id": "node-hourly",
+      "name": "Hourly Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "cronExpression", "expression": "0 * * * *"}]
+        }
+      }
+    },
+    {
+      "id": "node-get-report",
+      "name": "Get Token Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [320, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "http://orchestrator:8000/api/token-report"
+      }
+    },
+    {
+      "id": "node-if-cost",
+      "name": "Check Cost Threshold",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [540, 300],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "cost-check",
+              "leftValue": "={{ $json.total_cost_usd }}",
+              "rightValue": 1.0,
+              "operator": {"type": "number", "operation": "gt"}
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node-slack-alert",
+      "name": "Slack Cost Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [780, 180],
+      "parameters": {
+        "channel": "#test-alerts",
+        "text": "⚠️ YemekTest Token Budget Alert!\nSession Cost: ${{ $('Get Token Report').item.json.total_cost_usd }}\nAPI Calls: {{ $('Get Token Report').item.json.api_calls }}\nCache Hit Rate: {{ ($('Get Token Report').item.json.cache_hit_rate * 100).toFixed(1) }}%\nTotal Tokens: {{ $('Get Token Report').item.json.total_tokens }}",
+        "authentication": "webhook"
+      }
+    },
+    {
+      "id": "node-get-graph",
+      "name": "Get Token Graph",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [780, 420],
+      "parameters": {
+        "method": "GET",
+        "url": "http://orchestrator:8000/api/graph"
+      }
+    },
+    {
+      "id": "node-process-graph",
+      "name": "Process Graph Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 420],
+      "parameters": {
+        "jsCode": "const graph = $input.item.json;\nconst nodes = graph.nodes || [];\nconst summary = nodes.map(n => ({\n  stage: n.stage,\n  model: n.model,\n  cost: n.cost_usd,\n  tokens: n.tokens_in + n.tokens_out\n}));\nreturn [{ json: { node_count: nodes.length, nodes: summary, edge_count: (graph.edges || []).length } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Hourly Trigger": {"main": [[{"node": "Get Token Report", "type": "main", "index": 0}]]},
+    "Get Token Report": {"main": [[{"node": "Check Cost Threshold", "type": "main", "index": 0}]]},
+    "Check Cost Threshold": {
+      "main": [
+        [{"node": "Slack Cost Alert", "type": "main", "index": 0}],
+        [{"node": "Get Token Graph", "type": "main", "index": 0}]
+      ]
+    },
+    "Get Token Graph": {"main": [[{"node": "Process Graph Data", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [{"name": "yemektest"}, {"name": "monitoring"}],
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 0
+}

@@ -1,7 +1,8 @@
 # Environment and secrets
 .env
 .env.*
-!.env.example
+**/.env
+**/.env.*
 
 # n8n local/runtime data
 .n8n/
@@ -24,3 +25,29 @@ temp/
 .idea/
 .vscode/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Token optimizer cache
+token_optimizer_data.json
+
+# React / Vite
+mock_ui/node_modules/
+mock_ui/dist/
+mock_ui/.env
+
+# Docker
+.docker/
+
+# Test artifacts
+test-results/
+playwright-report/
+reports/

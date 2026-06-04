@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-maps",
+  "name": "Obsidian Maps",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Local-first map view scaffold for Obsidian notes.",
+  "author": "Agent Orchestra",
+  "isDesktopOnly": false
+}

@@ -1,0 +1,127 @@
+{
+  "id": "complete-orchestration-v2",
+  "name": "YemekTest Complete Orchestration",
+  "nodes": [
+    {
+      "id": "node-cron",
+      "name": "Nightly Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "cronExpression", "expression": "0 2 * * *"}]
+        }
+      }
+    },
+    {
+      "id": "node-orchestrate",
+      "name": "Run Orchestration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [340, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://orchestrator:8000/api/orchestrate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{"name": "Content-Type", "value": "application/json"}]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "task", "value": "Run full E2E test suite for Yemeksepeti mock app — login, search, add to cart, checkout, order tracking"},
+            {"name": "mode", "value": "OPUS_SONNET"},
+            {"name": "budget_usd", "value": "5.0"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "node-if-score",
+      "name": "Check Quality Score",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [580, 300],
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {
+              "id": "condition-score",
+              "leftValue": "={{ $json.finalScore }}",
+              "rightValue": 80,
+              "operator": {"type": "number", "operation": "gte"}
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node-get-report",
+      "name": "Get Token Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [820, 200],
+      "parameters": {
+        "method": "GET",
+        "url": "http://orchestrator:8000/api/token-report"
+      }
+    },
+    {
+      "id": "node-slack-pass",
+      "name": "Slack - Test Passed",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1060, 200],
+      "parameters": {
+        "channel": "#test-alerts",
+        "text": "✅ YemekTest Passed | Score: {{ $('Run Orchestration').item.json.finalScore }}/100 | Cost: ${{ $('Run Orchestration').item.json.cost_usd }} | Mode: {{ $('Run Orchestration').item.json.mode }}",
+        "authentication": "webhook"
+      }
+    },
+    {
+      "id": "node-noop-fail",
+      "name": "Log Failure",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [820, 420],
+      "parameters": {}
+    },
+    {
+      "id": "node-slack-fail",
+      "name": "Slack - Test Failed",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1060, 420],
+      "parameters": {
+        "channel": "#test-alerts",
+        "text": "❌ YemekTest FAILED | Score: {{ $('Run Orchestration').item.json.finalScore }}/100 | Review: {{ $('Run Orchestration').item.json.review | truncate(200) }}",
+        "authentication": "webhook"
+      }
+    }
+  ],
+  "connections": {
+    "Nightly Trigger": {"main": [[{"node": "Run Orchestration", "type": "main", "index": 0}]]},
+    "Run Orchestration": {"main": [[{"node": "Check Quality Score", "type": "main", "index": 0}]]},
+    "Check Quality Score": {
+      "main": [
+        [{"node": "Get Token Report", "type": "main", "index": 0}],
+        [{"node": "Log Failure", "type": "main", "index": 0}]
+      ]
+    },
+    "Get Token Report": {"main": [[{"node": "Slack - Test Passed", "type": "main", "index": 0}]]},
+    "Log Failure": {"main": [[{"node": "Slack - Test Failed", "type": "main", "index": 0}]]}
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [{"name": "yemektest"}, {"name": "nightly"}],
+  "pinData": {},
+  "versionId": "1",
+  "triggerCount": 0
+}
