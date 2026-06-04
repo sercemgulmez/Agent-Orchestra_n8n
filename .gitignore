@@ -1,0 +1,26 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# n8n local/runtime data
+.n8n/
+credentials.json
+*.credentials.json
+
+# Dependencies and build artifacts
+node_modules/
+dist/
+build/
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+
