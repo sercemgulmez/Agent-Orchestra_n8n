@@ -1,0 +1,17 @@
+{
+  "platformName": "Android",
+  "appium:automationName": "UiAutomator2",
+  "appium:deviceName": "${ANDROID_DEVICE_NAME:-Android Emulator}",
+  "appium:app": "${YEMEKSEPETI_ANDROID_APP}",
+  "appium:autoGrantPermissions": true,
+  "appium:newCommandTimeout": 120,
+  "testProfile": "mobile-android",
+  "safeMode": true,
+  "scenarios": [
+    "open app and verify login entry",
+    "set delivery location",
+    "switch restaurant, gel al, and market surfaces",
+    "search and open listing detail",
+    "add item to cart in mock or staging only"
+  ]
+}

@@ -30,7 +30,9 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            {"name": "task", "value": "Run full E2E test suite for Yemeksepeti mock app — login, search, add to cart, checkout, order tracking"},
+            {"name": "task", "value": "Run full E2E mirror suite for Yemeksepeti web and app — login with test account, set location, restaurant search, gel al, marketler, add to cart, coupon, checkout, order tracking"},
+            {"name": "test_type", "value": "e2e"},
+            {"name": "profile", "value": "mock"},
             {"name": "mode", "value": "OPUS_SONNET"},
             {"name": "budget_usd", "value": "5.0"}
           ]

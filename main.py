@@ -24,6 +24,39 @@ from mock_api.documentation import YEMEKSEPETI_COMPLETE_DOCS
 
 load_dotenv()
 
+TEST_PROFILES = {
+    "mock": {
+        "id": "mock",
+        "target": "local mirror",
+        "base_url": "http://localhost:8000",
+        "allows_side_effects": True,
+        "test_types": ["api", "web", "mobile", "e2e"],
+    },
+    "web-prod-smoke": {
+        "id": "web-prod-smoke",
+        "target": "https://www.yemeksepeti.com/",
+        "base_url": "https://www.yemeksepeti.com/",
+        "allows_side_effects": False,
+        "test_types": ["prod-smoke"],
+    },
+    "mobile-android": {
+        "id": "mobile-android",
+        "target": "Appium Android",
+        "base_url": "env:YEMEKSEPETI_ANDROID_APP",
+        "allows_side_effects": False,
+        "test_types": ["mobile"],
+    },
+    "mobile-ios": {
+        "id": "mobile-ios",
+        "target": "Appium iOS",
+        "base_url": "env:YEMEKSEPETI_IOS_APP",
+        "allows_side_effects": False,
+        "test_types": ["mobile"],
+    },
+}
+
+ALLOWED_TEST_TYPES = {"api", "web", "mobile", "e2e", "prod-smoke", "all"}
+
 _optimizer = TokenOptimizer(data_path="token_optimizer_data.json")
 _analyzer = ComplexityAnalyzer()
 _last_result: dict[str, Any] | None = None
@@ -62,6 +95,7 @@ class OrchestrateRequest(BaseModel):
     routing: bool = True
     task: Optional[str] = None
     mode: Optional[str] = None
+    profile: str = "mock"
 
     model_config = {"populate_by_name": True}
 
@@ -123,6 +157,10 @@ async def root():
 @app.post("/api/orchestrate")
 async def orchestrate(req: OrchestrateRequest):
     global _last_result
+    if req.test_type not in ALLOWED_TEST_TYPES:
+        return {"error": f"Unsupported test_type: {req.test_type}", "allowed": sorted(ALLOWED_TEST_TYPES)}
+    if req.profile not in TEST_PROFILES:
+        return {"error": f"Unsupported profile: {req.profile}", "allowed_profiles": sorted(TEST_PROFILES)}
     mode_models = _models_from_mode(req.mode)
     plan_model, execute_model = mode_models or (
         _plan_model_from(req.plan_model),
@@ -137,6 +175,7 @@ async def orchestrate(req: OrchestrateRequest):
     )
     pipeline = TestOrchestrationPipeline(config)
     docs = dict(YEMEKSEPETI_COMPLETE_DOCS)
+    docs["active_profile"] = TEST_PROFILES[req.profile]
     if req.task:
         docs["requested_task"] = req.task
     result = pipeline.run(docs, req.test_type)
@@ -151,6 +190,14 @@ async def orchestrate(req: OrchestrateRequest):
         "error": result.error,
         "finalScore": result.quality_score,
         "mode": result.mode,
+        "test_type": req.test_type,
+        "profile": TEST_PROFILES[req.profile],
+        "scenario_scope": {
+            "api_endpoints": len(docs.get("api", {}).get("endpoints", [])),
+            "ui_pages": len(docs.get("ui", {}).get("pages", [])),
+            "e2e_journeys": len(docs.get("e2e_journeys", [])),
+            "mobile_platforms": docs.get("mobile", {}).get("platforms", []),
+        },
     }
     return _last_result
 
@@ -190,7 +237,18 @@ async def get_status():
         "version": "2.0",
         "uptime_seconds": round(time.time() - _start_time, 1),
         "last_score": (_last_result or {}).get("quality_score"),
+        "last_profile": (_last_result or {}).get("profile"),
+        "last_test_type": (_last_result or {}).get("test_type"),
         "service": "yemektest-orchestrator",
+    }
+
+
+@app.get("/api/test-profiles")
+async def test_profiles():
+    return {
+        "profiles": list(TEST_PROFILES.values()),
+        "allowed_test_types": sorted(ALLOWED_TEST_TYPES),
+        "safe_testing_policy": "Live prod only supports read-only smoke checks. Login, cart, checkout, and mobile flows use mock/staging test accounts.",
     }
 
 
@@ -262,19 +320,22 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
   <header><h1>YemekTest Hub</h1></header>
   <main>
     <section><h2>Status</h2><pre id="status">Loading...</pre></section>
+    <section><h2>Test profile</h2><pre id="test-profile">Loading...</pre></section>
     <section><h2>Modes</h2><pre id="modes">Loading...</pre></section>
     <section><h2>Token Graph</h2><pre id="graph">Loading...</pre></section>
     <section><h2>Obsidian Maps profile</h2><pre id="obsidian-profile">Loading...</pre></section>
   </main>
   <script>
     async function load() {
-      const [status, modes, graph, report] = await Promise.all([
+      const [status, profiles, modes, graph, report] = await Promise.all([
         fetch('/api/status').then(r => r.json()),
+        fetch('/api/test-profiles').then(r => r.json()),
         fetch('/api/modes').then(r => r.json()),
         fetch('/api/graph').then(r => r.json()),
         fetch('/api/token-report').then(r => r.json())
       ]);
       document.getElementById('status').textContent = JSON.stringify(status, null, 2);
+      document.getElementById('test-profile').textContent = JSON.stringify(profiles, null, 2);
       document.getElementById('modes').textContent = JSON.stringify(modes, null, 2);
       document.getElementById('graph').textContent = JSON.stringify(graph, null, 2);
       document.getElementById('obsidian-profile').textContent = JSON.stringify(report.profiles?.['obsidian-maps'] || {

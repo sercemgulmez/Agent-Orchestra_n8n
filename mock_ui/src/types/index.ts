@@ -31,7 +31,26 @@ export interface Restaurant {
   rating: number
   deliveryTime: number
   minimumOrder: number
+  serviceTypes?: string[]
+  districts?: string[]
   imageUrl?: string
+}
+
+export interface Market {
+  id: number
+  name: string
+  rating: number
+  deliveryTime: number
+  minimumOrder: number
+  category: string
+  districts?: string[]
+}
+
+export interface AddressSuggestion {
+  id: string
+  label: string
+  district: string
+  city: string
 }
 
 export interface CartItem {
@@ -40,6 +59,7 @@ export interface CartItem {
   price: number
   quantity: number
   restaurantId: number
+  sourceType?: string
 }
 
 export interface Cart {

@@ -1,0 +1,16 @@
+{
+  "platformName": "iOS",
+  "appium:automationName": "XCUITest",
+  "appium:deviceName": "${IOS_DEVICE_NAME:-iPhone Simulator}",
+  "appium:app": "${YEMEKSEPETI_IOS_APP}",
+  "appium:newCommandTimeout": 120,
+  "testProfile": "mobile-ios",
+  "safeMode": true,
+  "scenarios": [
+    "open app and verify login entry",
+    "set delivery location",
+    "switch restaurant, gel al, and market surfaces",
+    "search and open listing detail",
+    "add item to cart in mock or staging only"
+  ]
+}

@@ -33,6 +33,8 @@ RESTAURANTS: List[Dict] = [
     {
         "id": 1, "name": "Burger Palace", "cuisine": "burger",
         "rating": 4.5, "deliveryTime": 25, "minimumOrder": 50.0,
+        "serviceTypes": ["delivery", "pickup"],
+        "districts": ["Kadıköy", "Beşiktaş", "Şişli"],
         "imageUrl": "https://via.placeholder.com/300x200?text=Burger+Palace",
         "menu": [
             {"categoryId": 1, "categoryName": "Burgerler", "items": [
@@ -52,6 +54,8 @@ RESTAURANTS: List[Dict] = [
     {
         "id": 2, "name": "Pizza House", "cuisine": "pizza",
         "rating": 4.2, "deliveryTime": 35, "minimumOrder": 80.0,
+        "serviceTypes": ["delivery", "pickup"],
+        "districts": ["Kadıköy", "Ataşehir"],
         "imageUrl": "https://via.placeholder.com/300x200?text=Pizza+House",
         "menu": [
             {"categoryId": 1, "categoryName": "Pizzalar", "items": [
@@ -69,6 +73,8 @@ RESTAURANTS: List[Dict] = [
     {
         "id": 3, "name": "Sushi Bar", "cuisine": "sushi",
         "rating": 4.8, "deliveryTime": 45, "minimumOrder": 150.0,
+        "serviceTypes": ["delivery"],
+        "districts": ["Beşiktaş", "Sarıyer"],
         "imageUrl": "https://via.placeholder.com/300x200?text=Sushi+Bar",
         "menu": [
             {"categoryId": 1, "categoryName": "Maki", "items": [
@@ -85,6 +91,8 @@ RESTAURANTS: List[Dict] = [
     {
         "id": 4, "name": "Köfte Evi", "cuisine": "turkish",
         "rating": 4.6, "deliveryTime": 30, "minimumOrder": 60.0,
+        "serviceTypes": ["delivery", "pickup"],
+        "districts": ["Üsküdar", "Kadıköy"],
         "imageUrl": "https://via.placeholder.com/300x200?text=Kofte+Evi",
         "menu": [
             {"categoryId": 1, "categoryName": "Köfteler", "items": [
@@ -101,6 +109,8 @@ RESTAURANTS: List[Dict] = [
     {
         "id": 5, "name": "Döner King", "cuisine": "doner",
         "rating": 4.3, "deliveryTime": 20, "minimumOrder": 45.0,
+        "serviceTypes": ["delivery", "pickup"],
+        "districts": ["Şişli", "Kağıthane"],
         "imageUrl": "https://via.placeholder.com/300x200?text=Doner+King",
         "menu": [
             {"categoryId": 1, "categoryName": "Dönerler", "items": [
@@ -115,6 +125,48 @@ RESTAURANTS: List[Dict] = [
         ],
     },
 ]
+
+MARKETS: List[Dict] = [
+    {
+        "id": 1001,
+        "name": "YS Market Kadıköy",
+        "rating": 4.7,
+        "deliveryTime": 18,
+        "minimumOrder": 100.0,
+        "category": "market",
+        "districts": ["Kadıköy", "Ataşehir"],
+        "products": [
+            {"id": 9001, "name": "Su 1.5L", "price": 12.90, "description": "Şişe su"},
+            {"id": 9002, "name": "Süt 1L", "price": 34.90, "description": "Günlük süt"},
+            {"id": 9003, "name": "Ekmek", "price": 10.00, "description": "Taze ekmek"},
+        ],
+    },
+    {
+        "id": 1002,
+        "name": "YS Hızlı Market Beşiktaş",
+        "rating": 4.5,
+        "deliveryTime": 22,
+        "minimumOrder": 120.0,
+        "category": "market",
+        "districts": ["Beşiktaş", "Şişli"],
+        "products": [
+            {"id": 9011, "name": "Kahve", "price": 89.90, "description": "Filtre kahve"},
+            {"id": 9012, "name": "Makarna", "price": 29.90, "description": "500g makarna"},
+        ],
+    },
+]
+
+ADDRESS_SUGGESTIONS: List[Dict] = [
+    {"id": "addr-kadikoy", "label": "Kadıköy, İstanbul", "district": "Kadıköy", "city": "İstanbul"},
+    {"id": "addr-besiktas", "label": "Beşiktaş, İstanbul", "district": "Beşiktaş", "city": "İstanbul"},
+    {"id": "addr-sisli", "label": "Şişli, İstanbul", "district": "Şişli", "city": "İstanbul"},
+    {"id": "addr-atasehir", "label": "Ataşehir, İstanbul", "district": "Ataşehir", "city": "İstanbul"},
+]
+
+COUPONS = {
+    "TEST10": {"code": "TEST10", "discount": 10.0, "message": "Test indirimi uygulandı."},
+    "YSAPP": {"code": "YSAPP", "discount": 15.0, "message": "Mobil app test kuponu uygulandı."},
+}
 
 # Runtime state
 ACTIVE_TOKENS: Dict[str, int] = {}  # token -> user_id
@@ -142,6 +194,14 @@ def _find_menu_item(item_id: int) -> Optional[tuple[Dict, Dict]]:
             for item in cat["items"]:
                 if item["id"] == item_id:
                     return item, r
+    return None, None
+
+
+def _find_market_product(item_id: int) -> Optional[tuple[Dict, Dict]]:
+    for market in MARKETS:
+        for item in market["products"]:
+            if item["id"] == item_id:
+                return item, market
     return None, None
 
 
@@ -220,6 +280,8 @@ async def register(req: RegisterRequest):
 async def search_restaurants(
     query: Optional[str] = None,
     cuisine: Optional[str] = None,
+    serviceType: Optional[str] = None,
+    district: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
 ):
@@ -229,10 +291,57 @@ async def search_restaurants(
         results = [r for r in results if q in r["name"].lower() or q in r["cuisine"].lower()]
     if cuisine:
         results = [r for r in results if r["cuisine"] == cuisine.lower()]
+    if serviceType:
+        results = [r for r in results if serviceType in r.get("serviceTypes", [])]
+    if district:
+        results = [r for r in results if district in r.get("districts", [])]
     start = (page - 1) * limit
     paged = results[start: start + limit]
     clean = [{k: v for k, v in r.items() if k != "menu"} for r in paged]
     return {"restaurants": clean, "total": len(results), "page": page}
+
+
+@app.get("/v2/discovery/surfaces")
+async def discovery_surfaces():
+    return {
+        "surfaces": [
+            {"id": "restaurants", "label": "Restoran", "serviceType": "delivery"},
+            {"id": "pickup", "label": "Gel Al", "serviceType": "pickup"},
+            {"id": "markets", "label": "Marketler", "serviceType": "market"},
+        ],
+        "safeTestingPolicy": "Mock/staging only for login, cart, checkout, and mobile flows.",
+    }
+
+
+@app.get("/v2/addresses/suggestions")
+async def address_suggestions(query: Optional[str] = None):
+    if not query:
+        return {"suggestions": ADDRESS_SUGGESTIONS}
+    q = query.lower()
+    return {"suggestions": [a for a in ADDRESS_SUGGESTIONS if q in a["label"].lower()]}
+
+
+@app.get("/v2/markets/search")
+async def search_markets(query: Optional[str] = None, district: Optional[str] = None):
+    results = MARKETS[:]
+    if district:
+        results = [m for m in results if district in m.get("districts", [])]
+    if query:
+        q = query.lower()
+        results = [
+            m for m in results
+            if q in m["name"].lower() or any(q in p["name"].lower() for p in m["products"])
+        ]
+    clean = [{k: v for k, v in m.items() if k != "products"} for m in results]
+    return {"markets": clean, "total": len(clean)}
+
+
+@app.get("/v2/markets/{market_id}/products")
+async def market_products(market_id: int):
+    market = next((m for m in MARKETS if m["id"] == market_id), None)
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+    return {"marketId": market_id, "marketName": market["name"], "products": market["products"]}
 
 
 @app.get("/v2/restaurants/{restaurant_id}")
@@ -280,9 +389,13 @@ async def get_cart(current_user: Dict = Depends(get_current_user)):
 async def add_to_cart(req: CartAddRequest, current_user: Dict = Depends(get_current_user)):
     uid = current_user["id"]
     item_data, restaurant = _find_menu_item(req.itemId)
+    source_type = "restaurant"
+    if not item_data:
+        item_data, restaurant = _find_market_product(req.itemId)
+        source_type = "market"
     if not item_data:
         raise HTTPException(status_code=404, detail="Item not found")
-    if restaurant["id"] != req.restaurantId:
+    if source_type == "restaurant" and restaurant["id"] != req.restaurantId:
         raise HTTPException(status_code=400, detail="Item does not belong to specified restaurant")
 
     cart = CARTS.setdefault(uid, [])
@@ -296,8 +409,26 @@ async def add_to_cart(req: CartAddRequest, current_user: Dict = Depends(get_curr
             "price": item_data["price"],
             "quantity": req.quantity,
             "restaurantId": req.restaurantId,
+            "sourceType": source_type,
         })
     return {"cart": {"items": cart, "total": _cart_total(cart)}}
+
+
+class CouponRequest(BaseModel):
+    code: str
+
+
+@app.post("/v2/coupons/validate")
+async def validate_coupon(req: CouponRequest, current_user: Dict = Depends(get_current_user)):
+    coupon = COUPONS.get(req.code.upper())
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Invalid coupon")
+    cart_total = _cart_total(CARTS.get(current_user["id"], []))
+    return {
+        **coupon,
+        "cartTotal": cart_total,
+        "discountedTotal": max(0, round(cart_total - coupon["discount"], 2)),
+    }
 
 
 @app.put("/v2/cart/update")

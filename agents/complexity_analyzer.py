@@ -42,10 +42,14 @@ class ComplexityAnalyzer:
         "has_auth": 20,
         "is_e2e": 25,
         "assertion_count": 5,
+        "is_mobile": 20,
+        "real_product_surface": 15,
     }
 
     AUTH_RE = re.compile(r"\b(auth|jwt|token|login)\b", re.IGNORECASE)
     ASSERT_RE = re.compile(r"\b(assert|verify|check|expect|should|validate|confirm)\b", re.IGNORECASE)
+    MOBILE_RE = re.compile(r"\b(mobile|android|ios|appium|app|emulator|simulator)\b", re.IGNORECASE)
+    PRODUCT_RE = re.compile(r"\b(yemeksepeti|restaurant|restoran|market|gel al|pickup|checkout|coupon|kupon|address|adres)\b", re.IGNORECASE)
 
     def analyze(self, task: dict[str, Any] | TaskFeatures) -> ComplexityResult:
         if isinstance(task, TaskFeatures):
@@ -63,6 +67,8 @@ class ComplexityAnalyzer:
             has_auth = bool(self.AUTH_RE.search(text))
             is_e2e = task.get("type") == "e2e"
             assertion_count = len(self.ASSERT_RE.findall(text))
+            is_mobile = task.get("type") == "mobile" or bool(self.MOBILE_RE.search(text))
+            real_product_surface = bool(self.PRODUCT_RE.search(text))
 
         breakdown = {
             "steps": step_count * self.WEIGHTS["step_count"],
@@ -70,6 +76,8 @@ class ComplexityAnalyzer:
             "auth": self.WEIGHTS["has_auth"] if has_auth else 0,
             "e2e": self.WEIGHTS["is_e2e"] if is_e2e else 0,
             "assertions": assertion_count * self.WEIGHTS["assertion_count"],
+            "mobile": self.WEIGHTS["is_mobile"] if not isinstance(task, TaskFeatures) and is_mobile else 0,
+            "real_product_surface": self.WEIGHTS["real_product_surface"] if not isinstance(task, TaskFeatures) and real_product_surface else 0,
         }
         score = min(100, sum(breakdown.values()))
         reasons: list[str] = []
@@ -83,6 +91,10 @@ class ComplexityAnalyzer:
             reasons.append("e2e task (+25)")
         if assertion_count:
             reasons.append(f"{assertion_count} assertions (+{breakdown['assertions']})")
+        if breakdown["mobile"]:
+            reasons.append("mobile/appium surface detected (+20)")
+        if breakdown["real_product_surface"]:
+            reasons.append("Yemeksepeti product surface detected (+15)")
 
         return ComplexityResult(
             score=score,
@@ -94,9 +106,9 @@ class ComplexityAnalyzer:
     def from_test_description(self, description: str) -> ComplexityResult:
         lowered = description.lower()
         steps = re.findall(r"\b(step|then|next|after|finally|login|search|cart|checkout|payment|track)\b", lowered)
-        deps = re.findall(r"\b(depend|require|service|gateway|api|database)\b", lowered)
+        deps = re.findall(r"\b(depend|require|service|gateway|api|database|appium|device)\b", lowered)
         task = {
-            "type": "e2e" if re.search(r"\b(e2e|journey|flow|complete|full)\b", lowered) else "api",
+            "type": "mobile" if self.MOBILE_RE.search(lowered) else ("e2e" if re.search(r"\b(e2e|journey|flow|complete|full)\b", lowered) else "api"),
             "steps": steps or [description],
             "dependencies": deps,
             "name": description,

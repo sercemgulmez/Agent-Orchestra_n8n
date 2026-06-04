@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-**YemekTest Orchestrator** — an AI-powered test generation platform for a mock Yemeksepeti (Turkish food delivery) app. It uses Claude models to run a multi-stage pipeline (Plan → Execute → Review → Fix) that produces pytest test code from a plain-text task description.
+**YemekTest Orchestrator** — an AI-powered test generation platform for Yemeksepeti web and mobile app scenarios. It models `yemeksepeti.com` and app user journeys in a safe mock/staging mirror instead of running side-effectful login, order, or payment tests against live production.
 
 The stack has four services:
 - **Orchestrator** (`main.py` + `agents/`): FastAPI app on port 8000 that drives the AI pipeline
-- **Mock API** (`mock_api/server.py`): FastAPI app on port 8001 simulating a food-delivery backend
-- **Mock UI** (`mock_ui/`): React/Vite/TypeScript food-delivery frontend on port 3000
+- **Mock API** (`mock_api/server.py`): FastAPI app on port 8001 simulating Yemeksepeti mirror surfaces: Restoran, Gel Al, Marketler, location, coupon, checkout, tracking
+- **Mock UI** (`mock_ui/`): React/Vite/TypeScript mirror frontend on port 3000
+- **Mobile profiles** (`mobile_appium/`): Android/iOS Appium capability templates for black-box app testing
 - **n8n** (Docker): Workflow automation on port 5678, persisted in `n8n_workflows/`
 
 ## Running Services
@@ -50,6 +51,17 @@ Playwright tests require browsers installed:
 playwright install chromium
 ```
 
+## Test Profiles
+
+The orchestrator exposes `/api/test-profiles` and supports:
+
+- `mock`: full safe mirror testing for API, web, mobile, and E2E.
+- `web-prod-smoke`: read-only live `https://www.yemeksepeti.com/` navigation/smoke checks. No login, cart, payment, scraping, or order submission.
+- `mobile-android`: Appium Android profile. App path and test account are env-only.
+- `mobile-ios`: Appium iOS profile. App path and test account are env-only.
+
+Valid `test_type` values are `api`, `web`, `mobile`, `e2e`, and `prod-smoke`.
+
 ## Agent Architecture (`agents/`)
 
 Three classes form the core pipeline:
@@ -82,7 +94,10 @@ Keyword-regex scorer. Detects steps, dependencies, auth keywords, E2E phrases, a
 All state is in-memory (resets on restart):
 - `USERS` / `ACTIVE_TOKENS`: bearer-token auth via `POST /v2/user/login`
 - `RESTAURANTS`: 5 hard-coded restaurants with nested menu categories and items
+- `MARKETS`: market listings and product catalogs for the Marketler surface
+- `ADDRESS_SUGGESTIONS`: safe district-level address suggestions, no personal addresses
 - `CARTS` / `ORDERS`: per-user cart and order lifecycle
+- `COUPONS`: test-only coupon validation (`TEST10`, `YSAPP`)
 
 Order status advances each time `GET /v2/orders/{id}/track` is called (RECEIVED → CONFIRMED → PREPARING → ON_THE_WAY → DELIVERED).
 
@@ -90,7 +105,9 @@ Test credentials: `test@test.com / Test123!`, `admin@test.com / Admin123!`
 
 ## Mock UI (`mock_ui/`)
 
-React Router v6 SPA with four routes: `/login`, `/` (home/restaurant list), `/restaurant/:id`, `/cart`. Auth token is stored in `localStorage`. All API calls go through `mock_ui/src/api/client.ts`.
+React Router v6 SPA with four routes: `/login`, `/` (Restoran/Gel Al/Marketler home), `/restaurant/:id`, `/cart`. Auth token is stored in `localStorage`. All API calls go through `mock_ui/src/api/client.ts`.
+
+The home page includes a mirror safety banner. Product tabs and location entry are testable via `data-testid` selectors.
 
 ## Environment Variables
 

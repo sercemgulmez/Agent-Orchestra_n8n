@@ -69,6 +69,8 @@
         "bodyParameters": {
           "parameters": [
             {"name": "task", "value": "={{ $('Split Tasks').item.json.task }}"},
+            {"name": "test_type", "value": "api"},
+            {"name": "profile", "value": "mock"},
             {"name": "mode", "value": "CODEX_SONNET"},
             {"name": "budget_usd", "value": "2.0"}
           ]
