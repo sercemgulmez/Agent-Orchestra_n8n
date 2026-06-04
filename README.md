@@ -31,7 +31,7 @@ Bu proje, `yemeksepeti.com` ve Yemeksepeti mobil app kullanıcı akışlarını 
 | `mobile-android` | Appium Android emulator/cihaz profili. App path env üzerinden gelir. |
 | `mobile-ios` | Appium iOS simulator/cihaz profili. App path env üzerinden gelir. |
 
-Canlı prod üzerinde sipariş, ödeme, gerçek hesap veya scraping testi çalıştırılmaz.
+Canlı prod üzerinde sipariş, ödeme, gerçek hesap veya scraping testi çalıştırılmaz. Bu yalnızca dokümantasyon kuralı değil; `/api/orchestrate` runtime güvenlik kapısı `web-prod-smoke`, `mobile-android` ve `mobile-ios` profillerinde sepet, checkout, ödeme, sipariş, kupon ve gerçek login-submit niyetlerini otomatik reddeder.
 
 ## Çalıştırma
 

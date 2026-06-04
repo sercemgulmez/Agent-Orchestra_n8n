@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass
 from typing import Any, Optional
 
 import uvicorn
@@ -31,6 +32,12 @@ TEST_PROFILES = {
         "base_url": "http://localhost:8000",
         "allows_side_effects": True,
         "test_types": ["api", "web", "mobile", "e2e"],
+        "forbidden_actions": [],
+        "safe_examples": [
+            "checkout order tracking in mirror",
+            "login with test account in mirror",
+            "add cart and coupon in mock",
+        ],
     },
     "web-prod-smoke": {
         "id": "web-prod-smoke",
@@ -38,6 +45,13 @@ TEST_PROFILES = {
         "base_url": "https://www.yemeksepeti.com/",
         "allows_side_effects": False,
         "test_types": ["prod-smoke"],
+        "forbidden_actions": ["login submit", "cart", "checkout", "payment", "order", "coupon", "personal data"],
+        "safe_examples": [
+            "homepage loads",
+            "public navigation tabs visible",
+            "language toggle visible",
+            "static smoke no account no cart no payment",
+        ],
     },
     "mobile-android": {
         "id": "mobile-android",
@@ -45,6 +59,12 @@ TEST_PROFILES = {
         "base_url": "env:YEMEKSEPETI_ANDROID_APP",
         "allows_side_effects": False,
         "test_types": ["mobile"],
+        "forbidden_actions": ["login submit", "cart", "checkout", "payment", "order", "coupon", "personal data"],
+        "safe_examples": [
+            "open app and verify login entry",
+            "public onboarding smoke",
+            "surface tabs visible without checkout",
+        ],
     },
     "mobile-ios": {
         "id": "mobile-ios",
@@ -52,10 +72,110 @@ TEST_PROFILES = {
         "base_url": "env:YEMEKSEPETI_IOS_APP",
         "allows_side_effects": False,
         "test_types": ["mobile"],
+        "forbidden_actions": ["login submit", "cart", "checkout", "payment", "order", "coupon", "personal data"],
+        "safe_examples": [
+            "open app and verify login entry",
+            "public onboarding smoke",
+            "surface tabs visible without checkout",
+        ],
     },
 }
 
 ALLOWED_TEST_TYPES = {"api", "web", "mobile", "e2e", "prod-smoke", "all"}
+FORBIDDEN_SIDE_EFFECT_PATTERNS = {
+    "order": ["order", "sipariş", "create order", "/orders/create"],
+    "checkout": ["checkout"],
+    "payment": ["payment", "ödeme", "pay order", "pay"],
+    "cart": ["cart", "sepet", "/cart/add", "add to cart"],
+    "coupon": ["coupon", "kupon"],
+    "login_submit": ["login with account", "submit login", "real account", "credential"],
+    "personal_data": ["phone", "telefon", "credit card", "kredi kart", "personal address", "kişisel adres"],
+}
+
+
+@dataclass
+class SafetyViolation:
+    code: str
+    message: str
+    matched: str
+
+
+@dataclass
+class SafetyPolicy:
+    profile_id: str
+    allows_side_effects: bool
+    allowed_test_types: list[str]
+    forbidden_actions: list[str]
+    safe_examples: list[str]
+
+    @classmethod
+    def from_profile(cls, profile: dict[str, Any]) -> "SafetyPolicy":
+        return cls(
+            profile_id=profile["id"],
+            allows_side_effects=profile["allows_side_effects"],
+            allowed_test_types=profile["test_types"],
+            forbidden_actions=profile.get("forbidden_actions", []),
+            safe_examples=profile.get("safe_examples", []),
+        )
+
+
+def _profile_policy(profile: dict[str, Any]) -> SafetyPolicy:
+    return SafetyPolicy.from_profile(profile)
+
+
+def _scan_forbidden_actions(text: str) -> list[SafetyViolation]:
+    lowered = text.lower()
+    violations: list[SafetyViolation] = []
+    for code, patterns in FORBIDDEN_SIDE_EFFECT_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in lowered:
+                violations.append(
+                    SafetyViolation(
+                        code=code,
+                        message=f"Side-effect action is not allowed in non-mock profiles: {code}",
+                        matched=pattern,
+                    )
+                )
+                break
+    return violations
+
+
+def _validate_safety(req: "OrchestrateRequest", profile: dict[str, Any]) -> list[SafetyViolation]:
+    policy = _profile_policy(profile)
+    violations: list[SafetyViolation] = []
+    if req.test_type not in policy.allowed_test_types:
+        violations.append(
+            SafetyViolation(
+                code="test_type_not_allowed",
+                message=f"{policy.profile_id} only allows: {', '.join(policy.allowed_test_types)}",
+                matched=req.test_type,
+            )
+        )
+    if not policy.allows_side_effects:
+        text = " ".join(
+            str(value)
+            for value in [req.test_type, req.task, req.profile]
+            if value is not None
+        )
+        violations.extend(_scan_forbidden_actions(text))
+    return violations
+
+
+def _safety_error(profile: dict[str, Any], violations: list[SafetyViolation]) -> dict[str, Any]:
+    policy = _profile_policy(profile)
+    return {
+        "error": "Safety policy violation",
+        "violations": [asdict(violation) for violation in violations],
+        "allowed_profile": {
+            "id": policy.profile_id,
+            "allowed_test_types": policy.allowed_test_types,
+            "allows_side_effects": policy.allows_side_effects,
+        },
+        "safe_alternative": (
+            "Use profile=mock for cart, checkout, coupon, payment, login-submit, and order flows. "
+            f"For {policy.profile_id}, use examples: {', '.join(policy.safe_examples)}."
+        ),
+    }
 
 _optimizer = TokenOptimizer(data_path="token_optimizer_data.json")
 _analyzer = ComplexityAnalyzer()
@@ -161,6 +281,10 @@ async def orchestrate(req: OrchestrateRequest):
         return {"error": f"Unsupported test_type: {req.test_type}", "allowed": sorted(ALLOWED_TEST_TYPES)}
     if req.profile not in TEST_PROFILES:
         return {"error": f"Unsupported profile: {req.profile}", "allowed_profiles": sorted(TEST_PROFILES)}
+    profile = TEST_PROFILES[req.profile]
+    violations = _validate_safety(req, profile)
+    if violations:
+        return _safety_error(profile, violations)
     mode_models = _models_from_mode(req.mode)
     plan_model, execute_model = mode_models or (
         _plan_model_from(req.plan_model),
@@ -175,7 +299,7 @@ async def orchestrate(req: OrchestrateRequest):
     )
     pipeline = TestOrchestrationPipeline(config)
     docs = dict(YEMEKSEPETI_COMPLETE_DOCS)
-    docs["active_profile"] = TEST_PROFILES[req.profile]
+    docs["active_profile"] = profile
     if req.task:
         docs["requested_task"] = req.task
     result = pipeline.run(docs, req.test_type)
@@ -191,7 +315,7 @@ async def orchestrate(req: OrchestrateRequest):
         "finalScore": result.quality_score,
         "mode": result.mode,
         "test_type": req.test_type,
-        "profile": TEST_PROFILES[req.profile],
+        "profile": profile,
         "scenario_scope": {
             "api_endpoints": len(docs.get("api", {}).get("endpoints", [])),
             "ui_pages": len(docs.get("ui", {}).get("pages", [])),
@@ -246,7 +370,14 @@ async def get_status():
 @app.get("/api/test-profiles")
 async def test_profiles():
     return {
-        "profiles": list(TEST_PROFILES.values()),
+        "profiles": [
+            {
+                **profile,
+                "allowed_test_types": profile["test_types"],
+                "safety_policy": asdict(_profile_policy(profile)),
+            }
+            for profile in TEST_PROFILES.values()
+        ],
         "allowed_test_types": sorted(ALLOWED_TEST_TYPES),
         "safe_testing_policy": "Live prod only supports read-only smoke checks. Login, cart, checkout, and mobile flows use mock/staging test accounts.",
     }

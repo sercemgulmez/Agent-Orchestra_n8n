@@ -62,6 +62,8 @@ The orchestrator exposes `/api/test-profiles` and supports:
 
 Valid `test_type` values are `api`, `web`, `mobile`, `e2e`, and `prod-smoke`.
 
+The safety policy is runtime-enforced in `/api/orchestrate`. Non-mock profiles reject cart, checkout, payment, order, coupon, personal data, and login-submit intent before any AI pipeline stage starts. `web-prod-smoke` only accepts `prod-smoke`.
+
 ## Agent Architecture (`agents/`)
 
 Three classes form the core pipeline:
