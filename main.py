@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 import uvicorn
@@ -10,7 +12,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, field_validator
 
 from agents.complexity_analyzer import ComplexityAnalyzer
 from agents.flexible_coordinator import (
@@ -128,7 +131,7 @@ def _scan_forbidden_actions(text: str) -> list[SafetyViolation]:
     violations: list[SafetyViolation] = []
     for code, patterns in FORBIDDEN_SIDE_EFFECT_PATTERNS.items():
         for pattern in patterns:
-            if pattern in lowered:
+            if re.search(r'\b' + re.escape(pattern) + r'\b', lowered):
                 violations.append(
                     SafetyViolation(
                         code=code,
@@ -179,8 +182,8 @@ def _safety_error(profile: dict[str, Any], violations: list[SafetyViolation]) ->
 
 _optimizer = TokenOptimizer(data_path="token_optimizer_data.json")
 _analyzer = ComplexityAnalyzer()
-_last_result: dict[str, Any] | None = None
 _start_time = time.time()
+_graph_ui_dir = Path(__file__).parent / "graph_ui"
 
 
 @asynccontextmanager
@@ -205,19 +208,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+if _graph_ui_dir.exists():
+    app.mount("/graph-ui", StaticFiles(directory=str(_graph_ui_dir)), name="graph-ui")
+
 
 class OrchestrateRequest(BaseModel):
     plan_model: Any = PlanModel.OPUS
     execute_model: Any = ExecuteModel.SONNET
     test_type: str = "all"
     compression: Any = CompressionLevel.MODERATE
-    budget: float = Field(default=5.0, alias="budget_usd")
+    budget: float = Field(default=5.0, alias="budget_usd", gt=0, le=100)
     routing: bool = True
     task: Optional[str] = None
     mode: Optional[str] = None
     profile: str = "mock"
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("budget")
+    @classmethod
+    def validate_budget(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("budget_usd must be positive")
+        if v > 100:
+            raise ValueError("budget_usd cannot exceed $100")
+        return v
 
 
 class ProfileAnalyzeRequest(BaseModel):
@@ -276,7 +291,6 @@ async def root():
 
 @app.post("/api/orchestrate")
 async def orchestrate(req: OrchestrateRequest):
-    global _last_result
     if req.test_type not in ALLOWED_TEST_TYPES:
         return {"error": f"Unsupported test_type: {req.test_type}", "allowed": sorted(ALLOWED_TEST_TYPES)}
     if req.profile not in TEST_PROFILES:
@@ -304,7 +318,7 @@ async def orchestrate(req: OrchestrateRequest):
         docs["requested_task"] = req.task
     result = pipeline.run(docs, req.test_type)
     report = result.token_report or pipeline.coordinator.optimizer.session_report()
-    _last_result = {
+    return {
         "plan": result.plan,
         "execution": result.execution,
         "review": result.review,
@@ -323,13 +337,10 @@ async def orchestrate(req: OrchestrateRequest):
             "mobile_platforms": docs.get("mobile", {}).get("platforms", []),
         },
     }
-    return _last_result
 
 
 @app.get("/api/token-report")
 async def token_report():
-    if _last_result and _last_result.get("token_report"):
-        return _last_result["token_report"]
     return _optimizer.session_report()
 
 
@@ -360,9 +371,6 @@ async def get_status():
         "status": "ok",
         "version": "2.0",
         "uptime_seconds": round(time.time() - _start_time, 1),
-        "last_score": (_last_result or {}).get("quality_score"),
-        "last_profile": (_last_result or {}).get("profile"),
-        "last_test_type": (_last_result or {}).get("test_type"),
         "service": "yemektest-orchestrator",
     }
 
@@ -453,7 +461,7 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <section><h2>Status</h2><pre id="status">Loading...</pre></section>
     <section><h2>Test profile</h2><pre id="test-profile">Loading...</pre></section>
     <section><h2>Modes</h2><pre id="modes">Loading...</pre></section>
-    <section><h2>Token Graph</h2><pre id="graph">Loading...</pre></section>
+    <section><h2>Token Graph</h2><a href="/graph" target="_blank" style="display:inline-block;margin-bottom:10px;padding:8px 16px;background:#e63946;color:white;border-radius:6px;text-decoration:none;font-weight:600;">Interaktif Graph Görünümü →</a><pre id="graph">Loading...</pre></section>
     <section><h2>Obsidian Maps profile</h2><pre id="obsidian-profile">Loading...</pre></section>
   </main>
   <script>
@@ -478,6 +486,13 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+
+@app.get("/graph", response_class=HTMLResponse)
+async def graph_viewer():
+    if _graph_ui_dir.exists():
+        return (_graph_ui_dir / "index.html").read_text(encoding="utf-8")
+    return "<h2>Graph UI not found. Run from project root.</h2>"
 
 
 @app.get("/dashboard", response_class=HTMLResponse)

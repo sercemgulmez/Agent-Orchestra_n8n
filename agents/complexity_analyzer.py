@@ -105,10 +105,24 @@ class ComplexityAnalyzer:
 
     def from_test_description(self, description: str) -> ComplexityResult:
         lowered = description.lower()
-        steps = re.findall(r"\b(step|then|next|after|finally|login|search|cart|checkout|payment|track)\b", lowered)
-        deps = re.findall(r"\b(depend|require|service|gateway|api|database|appium|device)\b", lowered)
+        steps = re.findall(
+            r"\b(adım|step|then|next|after|finally|sonra|önce|ardından|"
+            r"login|giriş|search|ara|cart|sepet|checkout|payment|ödeme|track|takip)\b",
+            lowered,
+            re.UNICODE,
+        )
+        deps = re.findall(
+            r"\b(bağımlı|depend|require|servis|service|gateway|api|database|appium|device)\b",
+            lowered,
+            re.UNICODE,
+        )
+        is_e2e = bool(re.search(
+            r"\b(e2e|journey|flow|complete|full|akış|tam|uçtan)\b", lowered, re.UNICODE
+        ))
+        if re.search(r"\bgel\s+al\b", lowered):
+            deps.append("gel_al_surface")
         task = {
-            "type": "mobile" if self.MOBILE_RE.search(lowered) else ("e2e" if re.search(r"\b(e2e|journey|flow|complete|full)\b", lowered) else "api"),
+            "type": "mobile" if self.MOBILE_RE.search(lowered) else ("e2e" if is_e2e else "api"),
             "steps": steps or [description],
             "dependencies": deps,
             "name": description,

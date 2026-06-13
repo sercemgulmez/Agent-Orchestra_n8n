@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import time
+from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+class BudgetExceededError(RuntimeError):
+    """Raised when cumulative token spend exceeds the configured budget."""
 
 
 class AgentStage(str, Enum):
@@ -267,11 +275,13 @@ class TokenOptimizer:
         budget_usd: float = 5.0,
         data_path: str = "token_optimizer_data.json",
         enable_cache: bool = True,
+        cache_maxsize: int = 500,
     ):
         self.compression_level = compression_level
         self.budget_usd = budget_usd
         self.enable_cache = enable_cache
-        self._cache: dict[str, dict[str, Any]] = {}
+        self._cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+        self._cache_maxsize = cache_maxsize
         self._usage: list[TokenUsage] = []
         self._graph = TokenGraphTracker(data_path)
         self._cache_hits = 0
@@ -414,11 +424,24 @@ class TokenOptimizer:
             return f"{guardrails}\n\n{compressed}".strip()
         return compressed
 
+    def _cache_get(self, key: str) -> dict[str, Any] | None:
+        if key not in self._cache:
+            return None
+        self._cache.move_to_end(key)
+        return self._cache[key]
+
+    def _cache_set(self, key: str, value: dict[str, Any]) -> None:
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        self._cache[key] = value
+        if len(self._cache) > self._cache_maxsize:
+            self._cache.popitem(last=False)
+
     def check_cache(self, prompt: str) -> str | None:
         if not self.enable_cache:
             return None
         key = self._hash(prompt)
-        item = self._cache.get(key)
+        item = self._cache_get(key)
         if not item:
             return None
         self._cache_hits += 1
@@ -428,11 +451,11 @@ class TokenOptimizer:
         if not self.enable_cache:
             return
         key = self._hash(prompt)
-        self._cache[key] = {
+        self._cache_set(key, {
             "response": response,
             "ctx_hash": key,
             "timestamp": time.time(),
-        }
+        })
 
     def calibrate_max_tokens(self, stage: AgentStage, complexity_score: int = 50) -> int:
         base = STAGE_MAX_TOKENS.get(stage, 2000)
@@ -460,9 +483,19 @@ class TokenOptimizer:
         return usage
 
     def _check_budget(self) -> None:
+        if not self.budget_usd:
+            return
         total = sum(item.cost_usd for item in self._usage)
-        if self.budget_usd and total >= self.budget_usd * 0.90:
-            print(f"WARNING: token budget is at {total / self.budget_usd:.0%}")
+        if total >= self.budget_usd:
+            raise BudgetExceededError(
+                f"Budget exhausted: spent ${total:.4f} of ${self.budget_usd:.2f}"
+            )
+        if total >= self.budget_usd * 0.90:
+            logger.warning(
+                "Token budget at %d%%: $%.4f remaining",
+                int(total / self.budget_usd * 100),
+                self.budget_usd - total,
+            )
 
     def session_report(self) -> dict[str, Any]:
         total_in = sum(item.input_tok for item in self._usage)

@@ -16,6 +16,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - yemektest
 
   redis:
     image: redis:7-alpine
@@ -26,6 +28,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - yemektest
 
   n8n:
     image: n8nio/n8n:latest
@@ -49,13 +53,19 @@ services:
       DB_POSTGRESDB_DATABASE: yemektest
       DB_POSTGRESDB_USER: yemektest
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env}
-      WEBHOOK_URL: http://localhost:5678
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678}
     depends_on:
       postgres:
+        condition: service_healthy
+      orchestrator:
         condition: service_healthy
     volumes:
       - n8n_data:/home/node/.n8n
       - ./n8n_workflows:/home/node/workflows
+    command: >
+      sh -c "n8n import:workflow --separate --input=/home/node/workflows/ && n8n start"
+    networks:
+      - yemektest
 
   orchestrator:
     build:
@@ -73,10 +83,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mock-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     volumes:
       - ./agents:/app/agents
       - ./main.py:/app/main.py
       - optimizer_cache:/app/cache
+    networks:
+      - yemektest
 
   mock-api:
     build:
@@ -84,6 +104,14 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - yemektest
 
   mock-ui:
     build:
@@ -93,8 +121,14 @@ services:
         VITE_API_URL: http://localhost:8001
     ports:
       - "3000:3000"
+    networks:
+      - yemektest
 
 volumes:
   postgres_data:
   n8n_data:
   optimizer_cache:
+
+networks:
+  yemektest:
+    driver: bridge

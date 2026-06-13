@@ -6,4 +6,5 @@ export interface ObsidianMapsSettings {
   markerIconProperty: string;
   customTileUrl: string;
   customTilesEnabled: boolean;
+  orchestratorUrl: string;
 }

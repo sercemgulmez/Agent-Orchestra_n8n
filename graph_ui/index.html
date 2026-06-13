@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YemekTest — Token Flow Graph</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 220px;
+      min-width: 220px;
+      background: #161b22;
+      border-right: 1px solid #30363d;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 10;
+    }
+
+    #sidebar-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #30363d;
+      font-size: 13px;
+      font-weight: 600;
+      color: #8b949e;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .panel {
+      border-bottom: 1px solid #30363d;
+      padding: 12px 16px;
+    }
+
+    .panel-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #8b949e;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .filter-row input[type="checkbox"] {
+      accent-color: #58a6ff;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    .control-row {
+      margin-bottom: 10px;
+    }
+
+    .control-row label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 4px;
+    }
+
+    .control-row label span { color: #e6edf3; font-weight: 500; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: #30363d;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #58a6ff;
+      cursor: pointer;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 7px 0;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #21262d;
+      color: #e6edf3;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      margin-bottom: 6px;
+    }
+
+    .btn:hover { background: #30363d; border-color: #58a6ff; }
+    .btn.active { background: #1f6feb; border-color: #58a6ff; color: #fff; }
+
+    /* ── Stats ── */
+    #stats {
+      padding: 12px 16px;
+      font-size: 12px;
+      color: #8b949e;
+      line-height: 1.8;
+      border-bottom: 1px solid #30363d;
+    }
+
+    #stats strong { color: #e6edf3; }
+
+    /* ── Tooltip ── */
+    #tooltip {
+      position: fixed;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      line-height: 1.7;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 100;
+      max-width: 240px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    #tooltip.visible { opacity: 1; }
+    #tooltip .tt-title { font-weight: 700; font-size: 13px; color: #58a6ff; margin-bottom: 4px; }
+    #tooltip .tt-model { color: #8b949e; font-size: 11px; margin-bottom: 6px; }
+    #tooltip .tt-row { display: flex; justify-content: space-between; gap: 12px; }
+    #tooltip .tt-label { color: #8b949e; }
+    #tooltip .tt-value { color: #e6edf3; font-weight: 500; }
+
+    /* ── Canvas ── */
+    #graph-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #graph-container canvas { display: block; }
+
+    /* ── Empty state ── */
+    #empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #30363d;
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    #empty-state svg { opacity: 0.3; }
+
+    /* ── Refresh badge ── */
+    #refresh-badge {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      font-size: 11px;
+      color: #8b949e;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
+
+    #refresh-badge.live::before {
+      content: "● ";
+      color: #3fb950;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div id="sidebar-header">Graph view</div>
+
+  <div class="panel">
+    <div class="panel-title">Filters</div>
+    <div class="filter-row"><span class="dot" style="background:#4a9eff"></span><label><input type="checkbox" checked data-stage="PLAN"> PLAN</label></div>
+    <div class="filter-row"><span class="dot" style="background:#43e97b"></span><label><input type="checkbox" checked data-stage="EXECUTE"> EXECUTE</label></div>
+    <div class="filter-row"><span class="dot" style="background:#ff9f43"></span><label><input type="checkbox" checked data-stage="REVIEW"> REVIEW</label></div>
+    <div class="filter-row"><span class="dot" style="background:#ff6b6b"></span><label><input type="checkbox" checked data-stage="FIX"> FIX</label></div>
+    <div class="filter-row"><span class="dot" style="background:#a29bfe"></span><label><input type="checkbox" checked data-stage="ANALYZE"> ANALYZE</label></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Display</div>
+    <div class="control-row">
+      <label>Node size <span id="val-node-size">1.0×</span></label>
+      <input type="range" id="ctrl-node-size" min="0.3" max="4" step="0.1" value="1">
+    </div>
+    <div class="control-row">
+      <label>Link thickness <span id="val-link-thick">1.0×</span></label>
+      <input type="range" id="ctrl-link-thick" min="0.2" max="5" step="0.1" value="1">
+    </div>
+    <div class="control-row">
+      <label>Text fade threshold <span id="val-text-fade">60</span></label>
+      <input type="range" id="ctrl-text-fade" min="20" max="200" step="5" value="60">
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Forces</div>
+    <div class="control-row">
+      <label>Center force <span id="val-center">0.1</span></label>
+      <input type="range" id="ctrl-center" min="0" max="1" step="0.05" value="0.1">
+    </div>
+    <div class="control-row">
+      <label>Repel force <span id="val-repel">-120</span></label>
+      <input type="range" id="ctrl-repel" min="-400" max="-10" step="10" value="-120">
+    </div>
+    <div class="control-row">
+      <label>Link force <span id="val-link">0.5</span></label>
+      <input type="range" id="ctrl-link" min="0" max="2" step="0.05" value="0.5">
+    </div>
+    <button class="btn" id="btn-animate">Animate</button>
+    <button class="btn active" id="btn-refresh">Auto-refresh: ON</button>
+  </div>
+
+  <div id="stats">
+    <div>Nodes: <strong id="stat-nodes">—</strong></div>
+    <div>Edges: <strong id="stat-edges">—</strong></div>
+    <div>Total tokens: <strong id="stat-tokens">—</strong></div>
+    <div>Total cost: <strong id="stat-cost">—</strong></div>
+  </div>
+</div>
+
+<!-- Graph canvas -->
+<div id="graph-container">
+  <div id="empty-state">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/>
+      <line x1="9" y1="6" x2="15" y2="6"/><line x1="6" y1="9" x2="12" y2="15"/><line x1="18" y1="9" x2="12" y2="15"/>
+    </svg>
+    <div>No orchestration data yet.</div>
+    <div style="font-size:12px">Run <code style="background:#21262d;padding:2px 6px;border-radius:4px">POST /api/orchestrate</code> to generate graph data.</div>
+  </div>
+  <div id="refresh-badge">Connecting…</div>
+</div>
+
+<div id="tooltip">
+  <div class="tt-title" id="tt-title"></div>
+  <div class="tt-model" id="tt-model"></div>
+  <div class="tt-row"><span class="tt-label">Tokens</span><span class="tt-value" id="tt-tokens"></span></div>
+  <div class="tt-row"><span class="tt-label">Cost</span><span class="tt-value" id="tt-cost"></span></div>
+  <div class="tt-row"><span class="tt-label">Calls</span><span class="tt-value" id="tt-calls"></span></div>
+</div>
+
+<script src="https://unpkg.com/force-graph@1.43.5/dist/force-graph.min.js"></script>
+<script src="graph.js"></script>
+</body>
+</html>

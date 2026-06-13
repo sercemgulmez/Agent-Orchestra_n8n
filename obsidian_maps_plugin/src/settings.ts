@@ -5,7 +5,8 @@ export const DEFAULT_SETTINGS: ObsidianMapsSettings = {
   markerColorProperty: "mapColor",
   markerIconProperty: "mapIcon",
   customTileUrl: "",
-  customTilesEnabled: false
+  customTilesEnabled: false,
+  orchestratorUrl: "http://localhost:8000",
 };
 
 export function normalizeSettings(data: Partial<ObsidianMapsSettings> | null | undefined): ObsidianMapsSettings {
@@ -15,6 +16,7 @@ export function normalizeSettings(data: Partial<ObsidianMapsSettings> | null | u
     markerColorProperty: String(merged.markerColorProperty || DEFAULT_SETTINGS.markerColorProperty),
     markerIconProperty: String(merged.markerIconProperty || DEFAULT_SETTINGS.markerIconProperty),
     customTileUrl: String(merged.customTileUrl || ""),
-    customTilesEnabled: Boolean(merged.customTilesEnabled && merged.customTileUrl)
+    customTilesEnabled: Boolean(merged.customTilesEnabled && merged.customTileUrl),
+    orchestratorUrl: String(merged.orchestratorUrl || DEFAULT_SETTINGS.orchestratorUrl),
   };
 }

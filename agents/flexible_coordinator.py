@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 try:
     import anthropic
@@ -122,6 +125,7 @@ class MultiAgentCoordinator:
             return cached
 
         compressed = self.optimizer.compress_prompt(prompt, stage)
+        self.optimizer._check_budget()
         max_tokens = self.optimizer.calibrate_max_tokens(stage, complexity_score)
 
         if model == PlanModel.CODEX.value or model == ExecuteModel.CODEX.value:
@@ -178,24 +182,26 @@ class MultiAgentCoordinator:
         return "\n\n".join(chunks)
 
     def _quick_quality_check(self, code: str) -> int:
-        score = 50
-        if "def test_" in code:
+        score = 0
+        if re.search(r'\bdef\s+test_\w+\s*\(', code):
+            score += 20
+        score += min(25, len(re.findall(r'\bassert\b', code)) * 5)
+        if re.search(r'^\s*(import|from)\s+\w+', code, re.MULTILINE):
             score += 15
-        if "assert" in code:
+        if re.search(r'@pytest\.|pytest\.', code):
+            score += 20
+        if re.search(r'\bdef\s+\w+\s*\([^)]+\)', code):
             score += 10
-        if "import" in code:
-            score += 10
-        if "pytest" in code:
-            score += 5
-        if "SyntaxError" in code:
-            score -= 30
-        if "TODO" in code:
-            score -= 5
-        return max(0, min(100, score))
+        if re.search(r'(SyntaxError|NameError|TypeError):', code):
+            score = max(0, score - 40)
+        if re.search(r'\b(TODO|FIXME)\b', code):
+            score = max(0, score - 10)
+        return min(100, max(0, score))
 
     def review_code(self, code: str) -> str:
-        """Review uses the opposite model from execute_model automatically."""
-        review_model = REVIEW_MODEL_MAP[self.config.execute_model]
+        review_model = REVIEW_MODEL_MAP.get(
+            self.config.execute_model, ExecuteModel.CODEX.value
+        )
         prompt = f"Review this generated test code. Include critical issues and QUALITY_SCORE:\n{code}"
         return self._call_api(review_model, prompt, AgentStage.REVIEW)
 
@@ -230,7 +236,8 @@ class TestOrchestrationPipeline:
                 result.quality_score = self.coordinator._quick_quality_check(result.fix)
             result.token_report = self.coordinator.optimizer.session_report()
         except Exception as exc:
-            result.error = str(exc)
+            logger.exception("Pipeline failed")
+            result.error = f"{type(exc).__name__}: {exc}"
         return result
 
 
