@@ -43,6 +43,26 @@ python3 main.py
 
 Dashboard: `http://localhost:8000/dashboard`
 
+## n8n Kullanim Sekli
+
+n8n bu projede karar veren katman degildir; kontrollu tetikleyici ve raporlama katmanidir. Test guvenligi, profil validasyonu ve yan etkili aksiyon engelleme FastAPI orchestrator icinde calisir. n8n workflow'lari yalnizca schedule/manual trigger, `/api/orchestrate` cagirma, token/maliyet raporu alma ve bildirim gonderme icin kullanilir.
+
+- Lokal gelistirme icin tek n8n instance + Postgres yeterlidir.
+- CI/nightly workflow'lari sadece `profile=mock` ile mirror regression suite calistirir.
+- Canli smoke workflow'u ayri tutulur ve yalniz `profile=web-prod-smoke`, `test_type=prod-smoke` ile public, yan etkisiz navigation kontrolleri yapar.
+- Siparis, odeme, login-submit, sepet ve kupon akislari sadece `mock` profilde calisir.
+- Olcek gerekirse n8n queue mode + Redis + worker yapisina gecilir; bu proje icin varsayilan local tek instance yeterlidir.
+
+## n8n Guvenlik Checklist
+
+- `N8N_BASIC_AUTH_PASSWORD`, `POSTGRES_PASSWORD` ve `N8N_ENCRYPTION_KEY` sadece lokal `.env` uzerinden verilir; workflow JSON veya repo icine yazilmaz.
+- `N8N_ENCRYPTION_KEY` ilk kurulumdan sonra sabit tutulur; degistirmek mevcut credential'lari okunamaz hale getirebilir.
+- n8n local gelistirmede `127.0.0.1:5678` uzerinden baglanir. Dis ortama acilacaksa reverse proxy, TLS ve guclu auth zorunludur.
+- n8n credential store kullanilir; Slack/webhook/token degerleri workflow JSON icine gomulmez.
+- Riskli node'lar kapali tutulur: Execute Command ve Read/Write Files from Disk.
+- Execution pruning aciktir; prompt/test payload'lari ve raporlar uzun sure saklanmaz.
+- Safety violation donen orchestration yaniti n8n'de kalite skoruna gecmeden durdurulur.
+
 ## Notlar
 
 - Kimlik bilgileri, API anahtarlari ve `.env` dosyalari commit edilmemelidir.

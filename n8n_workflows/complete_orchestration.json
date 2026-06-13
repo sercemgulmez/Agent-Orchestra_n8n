@@ -40,11 +40,42 @@
       }
     },
     {
+      "id": "node-if-safety",
+      "name": "Check Safety Violation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [580, 300],
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {
+              "id": "condition-safety-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "Safety policy violation",
+              "operator": {"type": "string", "operation": "equals"}
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node-stop-safety",
+      "name": "Stop Safety Violation",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [820, 80],
+      "parameters": {
+        "errorMessage": "={{ 'Safety policy violation: ' + JSON.stringify($json.violations || []) }}"
+      }
+    },
+    {
       "id": "node-if-score",
       "name": "Check Quality Score",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [580, 300],
+      "position": [820, 300],
       "parameters": {
         "conditions": {
           "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
@@ -106,7 +137,13 @@
   ],
   "connections": {
     "Nightly Trigger": {"main": [[{"node": "Run Orchestration", "type": "main", "index": 0}]]},
-    "Run Orchestration": {"main": [[{"node": "Check Quality Score", "type": "main", "index": 0}]]},
+    "Run Orchestration": {"main": [[{"node": "Check Safety Violation", "type": "main", "index": 0}]]},
+    "Check Safety Violation": {
+      "main": [
+        [{"node": "Stop Safety Violation", "type": "main", "index": 0}],
+        [{"node": "Check Quality Score", "type": "main", "index": 0}]
+      ]
+    },
     "Check Quality Score": {
       "main": [
         [{"node": "Get Token Report", "type": "main", "index": 0}],

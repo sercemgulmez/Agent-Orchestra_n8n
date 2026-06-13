@@ -78,11 +78,42 @@
       }
     },
     {
+      "id": "node-if-safety",
+      "name": "Check Safety Violation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1200, 300],
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+          "conditions": [
+            {
+              "id": "condition-safety-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "Safety policy violation",
+              "operator": {"type": "string", "operation": "equals"}
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node-stop-safety",
+      "name": "Stop Safety Violation",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1420, 180],
+      "parameters": {
+        "errorMessage": "={{ 'Safety policy violation: ' + JSON.stringify($json.violations || []) }}"
+      }
+    },
+    {
       "id": "node-merge",
       "name": "Merge Results",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [1200, 300],
+      "position": [1420, 300],
       "parameters": {
         "mode": "append"
       }
@@ -92,7 +123,7 @@
       "name": "Get Token Report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1420, 300],
+      "position": [1640, 300],
       "parameters": {
         "method": "GET",
         "url": "http://orchestrator:8000/api/token-report"
@@ -104,7 +135,13 @@
     "Define API Tasks": {"main": [[{"node": "Split Tasks", "type": "main", "index": 0}]]},
     "Split Tasks": {"main": [[{"node": "Analyze Complexity", "type": "main", "index": 0}]]},
     "Analyze Complexity": {"main": [[{"node": "Orchestrate Task", "type": "main", "index": 0}]]},
-    "Orchestrate Task": {"main": [[{"node": "Merge Results", "type": "main", "index": 0}]]},
+    "Orchestrate Task": {"main": [[{"node": "Check Safety Violation", "type": "main", "index": 0}]]},
+    "Check Safety Violation": {
+      "main": [
+        [{"node": "Stop Safety Violation", "type": "main", "index": 0}],
+        [{"node": "Merge Results", "type": "main", "index": 0}]
+      ]
+    },
     "Merge Results": {"main": [[{"node": "Get Token Report", "type": "main", "index": 0}]]}
   },
   "settings": {
